@@ -1,5 +1,5 @@
 {
-  "name": "@ll-mongo-graphql-starter",
+  "name": "ll-mongo-graphql-starter",
   "version": "0.11.11",
   "description": "",
   "main": "index.js",
