@@ -1,35 +1,82 @@
-  async ${targetObjName}(obj, args, context, ast) {
-    if (obj.${targetObjName}) {
-      await processHook(hooksObj, "${targetTypeName}", "adjustResults", obj.${targetObjName});
-      return cleanUpResults(obj.${targetObjName}, ${targetTypeName}Metadata);
-    }
-
-    let dataLoaderName = dataLoaderId(ast);
-    if (context[dataLoaderName] == null) {
-      let db = await context.__mongodb;
-      context[dataLoaderName] = new DataLoader(async keys => {
-        let $match = { ${keyField}: { $in: keys.filter(id => id).map(${idMapping}) } };
-        let queryPacket = decontructGraphqlQuery(args, ast, ${targetTypeName}Metadata, null${receivingKeyForce});
-        let { $project, $sort, $limit, $skip } = queryPacket;
-        
-        let aggregateItems = [{ $match }, $sort ? { $sort } : null, { $project }].filter(item => item);
-        let results = await dbHelpers.runQuery(db, "${table}", aggregateItems);
-        cleanUpResults(results, ${targetTypeName}Metadata);
-        let finalResult = keys.map(keyArr => []);
-
-        for (let result of results){
-          let keyLookup = new Set(${lookupSetContents});
-          for (let i = 0; i < keys.length; i++){
-            if (keyLookup.has("" + keys[i])) {
-              finalResult[i].push(result);
-            }
-          }
-        }
-        for (let items of finalResult) {
-          await processHook(hooksObj, "${targetTypeName}", "adjustResults", items);
-        }
-        return finalResult;
-      });
-    }
-    return context[dataLoaderName].load(obj.${fkField} || []);
+async ${targetObjName}(obj, args, context, ast) {
+  if (obj.${targetObjName}) {
+    return obj.${targetObjName}.map(cleanUpResult);
   }
+
+  let db = await context.__mongodb;
+  let pipeline = [
+    {
+      $match: {
+        _id: obj._id
+      }
+    },
+    {
+      $lookup: {
+        from: "${table}",
+        let: { ${fkField}: "$${fkField}" },
+        pipeline: [
+          {
+            $match: {
+              $expr: { $in: ["$${keyField}", "$$${fkField}"] }
+            }
+          },
+          ${args.FILTER ? `{ $match: ${JSON.stringify(args.FILTER)} },` : ''}
+          ${args.SORT ? `{ $sort: ${JSON.stringify(args.SORT)} },` : ''}
+          ${args.SKIP ? `{ $skip: ${args.SKIP} },` : ''}
+          ${args.LIMIT ? `{ $limit: ${args.LIMIT} },` : ''}
+          {
+            $project: ${JSON.stringify($project)}
+          }
+        ],
+        as: "${targetObjName}"
+      }
+    },
+    {
+      $project: {
+        ${targetObjName}: 1
+      }
+    }
+  ];
+
+  let results = await db.collection("${sourceTable}").aggregate(pipeline).toArray();
+  let ${targetObjName} = results[0]?.${targetObjName} || [];
+
+  return ${targetObjName}.map(cleanUpResult);
+}
+
+async ${targetObjName}Meta(obj, args, context, ast) {
+  let db = await context.__mongodb;
+  let pipeline = [
+    {
+      $match: {
+        _id: obj._id
+      }
+    },
+    {
+      $lookup: {
+        from: "${table}",
+        let: { ${fkField}: "$${fkField}" },
+        pipeline: [
+          {
+            $match: {
+              $expr: { $in: ["$${keyField}", "$$${fkField}"] }
+            }
+          },
+          ${args.FILTER ? `{ $match: ${JSON.stringify(args.FILTER)} },` : ''}
+          {
+            $count: "count"
+          }
+        ],
+        as: "${targetObjName}Count"
+      }
+    },
+    {
+      $project: {
+        count: { $arrayElemAt: ["$${targetObjName}Count.count", 0] }
+      }
+    }
+  ];
+
+  let results = await db.collection("${sourceTable}").aggregate(pipeline).toArray();
+  return { count: results[0]?.count || 0 };
+}

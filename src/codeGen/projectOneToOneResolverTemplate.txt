@@ -1,30 +1,44 @@
-  async ${targetObjName}(obj, args, context, ast) {
-    if (obj.${targetObjName} !== void 0) {
-      await processHook(hooksObj, "${targetTypeName}", "adjustResults", [obj.${targetObjName}]);
-      cleanUpResults([obj.${targetObjName}], ${targetTypeName}Metadata)
-      return obj.${targetObjName};
-    }
-
-    let dataLoaderName = dataLoaderId(ast);
-    if (context[dataLoaderName] == null) {
-      let db = await context.__mongodb;
-      context[dataLoaderName] = new DataLoader(async keys => {
-        let $match = { ${keyField}: { $in: keys.filter(id => id).map(${idMapping}) } };
-        let queryPacket = decontructGraphqlQuery(args, ast, ${targetTypeName}Metadata, null${receivingKeyForce});
-        let { $project, $sort, $limit, $skip } = queryPacket;
-
-        let aggregateItems = [{ $match }, { $project }];
-        let results = await dbHelpers.runQuery(db, "${table}", aggregateItems);
-        cleanUpResults(results, ${targetTypeName}Metadata);
-
-        let destinationMap = new Map([]);
-        for (let result of results) {
-          destinationMap.set("" + result.${keyField}, result);
-        }
-        let finalResult = keys.map(id => destinationMap.get("" + id) || null);
-        await processHook(hooksObj, "${targetTypeName}", "adjustResults", finalResult);
-        return finalResult;
-      });
-    }
-    return obj.${fkField} == null ? null : context[dataLoaderName].load(obj.${fkField});
+async ${targetObjName}(obj, args, context, ast) {
+  if (obj.${targetObjName}) {
+    return cleanUpResult(obj.${targetObjName});
   }
+
+  let db = await context.__mongodb;
+  let pipeline = [
+    {
+      $match: {
+        _id: obj._id
+      }
+    },
+    {
+      $lookup: {
+        from: "${table}",
+        let: { ${fkField}: "$${fkField}" },
+        pipeline: [
+          {
+            $match: {
+              $expr: { $eq: ["$${keyField}", "$$${fkField}"] }
+            }
+          },
+          {
+            $project: ${JSON.stringify($project)}
+          },
+          {
+            $limit: 1
+          }
+        ],
+        as: "${targetObjName}"
+      }
+    },
+    {
+      $project: {
+        ${targetObjName}: { $arrayElemAt: ["$${targetObjName}", 0] }
+      }
+    }
+  ];
+
+  let results = await db.collection("${sourceTable}").aggregate(pipeline).toArray();
+  let ${targetObjName} = results[0]?.${targetObjName};
+
+  return ${targetObjName} ? cleanUpResult(${targetObjName}) : null;
+}

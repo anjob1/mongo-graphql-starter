@@ -1,5 +1,5 @@
 {
-  "name": "mongo-graphql-starter",
+  "name": "@ll-mongo-graphql-starter",
   "version": "0.11.11",
   "description": "",
   "main": "index.js",
@@ -9,9 +9,6 @@
   },
   "author": "Adam Rackis",
   "license": "MIT",
-  "bugs": {
-    "url": "https://github.com/arackaf/mongo-graphql-starter/issues"
-  },
   "jest": {
     "coverageDirectory": "./coverage/",
     "collectCoverage": true,
@@ -20,7 +17,6 @@
     ],
     "globalSetup": "<rootDir>/test/masterSetup.js"
   },
-  "homepage": "https://github.com/arackaf/mongo-graphql-starter",
   "devDependencies": {
     "babel-jest": "^24.9.0",
     "babel-plugin-dynamic-import-node": "^2.3.0",
